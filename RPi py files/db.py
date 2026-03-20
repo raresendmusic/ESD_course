@@ -9,10 +9,12 @@ LOG_FILE_NAME = 'hiking_log.txt'
 DB_SESSION_TABLE = {
     "name": "sessions",
     "cols": [
-        "session_id integer PRIMARY KEY",
-        "km integer",
+        "session_id text PRIMARY KEY",
+        "start_time text",
+        "end_time text",
         "steps integer",
-        "burnt_kcal integer",
+        "distance_m integer",
+        "duration_s integer",
     ]
 }
 
@@ -49,11 +51,20 @@ class HubDatabase:
     def save(self, s: hike.HikeSession):
         sessions = self.get_sessions()
 
-        if len(sessions) > 0:
-            s.id = sorted(sessions, key=lambda sess: sess.id)[-1].id + 1
-        else:
-            s.id = 1
-
+        self.cur.execute(
+            f"""INSERT INTO {DB_SESSION_TABLE['name']}
+            (session_id, start_time, end_time, steps, distance_m, duration_s)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                s.session_id,
+                s.start_time,
+                s.end_time,
+                s.steps,
+                s.distance_m,
+                s.duration_s,
+            )
+        )
+        
         try:
             self.lock.acquire()
 
@@ -67,7 +78,10 @@ class HubDatabase:
             
             try:
                 with open(LOG_FILE_NAME, "a") as f:
-                    log_entry = f"{s.id:<5} | {s.steps:<10} | {s.km:<10} | {s.kcal:<10}\n"
+                    log_entry = (
+                        f"{s.session_id} | {s.start_time} | {s.end_time} | "
+                        f"{s.steps} | {s.distance_m} | {s.duration_s}\n"
+                    )
                     f.write(log_entry)
             except Exception as e:
                 print(f"Error writing file")

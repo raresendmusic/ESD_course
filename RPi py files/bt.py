@@ -1,6 +1,6 @@
 import bluetooth
 import time
-
+import json
 import hike
 
 WATCH_BT_MAC = '94:B5:55:C8:DF:AE'
@@ -101,56 +101,43 @@ class HubBluetooth:
                     print("Reminder has been sent to the Watch about the attempt of the synchronization.")
 
     @staticmethod
+    @staticmethod
     def messages_to_sessions(messages: list[bytes]) -> list[hike.HikeSession]:
-        """Transforms multiple incoming messages to a list of hike.HikeSession objects.
-
-        Args:
-            messages: list of bytes, in the form of the simple protocol between
-                      the Hub and the Watch.
-
-        Returns:
-            list[hike.HikeSession]: a list of hike.HikeSession objects representing the
-                                    interpreted messages.
-        """
-
-        return list(map(HubBluetooth.mtos, messages))
+        """Transforms multiple incoming JSON messages to a list of hike.HikeSession objects."""
+        sessions = []
+        for msg in messages:
+            if not msg.strip():
+                continue
+            try:
+                sessions.append(HubBluetooth.mtos(msg))
+            except Exception as e:
+                print(f"Skipping corrupted message: {e}")
+        return sessions
 
     @staticmethod
     def mtos(message: bytes) -> hike.HikeSession:
-        """Transforms a single message into a hike.HikeSession object.
-
-        A single message is in the following format with 0->inf number of latitude and longitude pairs:
-            id;steps;km;lat1,long1;lat2,long2;...;\\n
-
-        For example:
-            b'4;2425;324;64.83458747762428,24.83458747762428;...,...;\\n'
-
-        Args:
-            message: bytes to transform.
-
-        Returns:
-            hike.HikeSession: representing a hiking session from transforming a message.
-
-        Raises:
-            AssertionError: if the message misses information, or if it is badly formatted.
+        """Transforms a single JSON message into a hike.HikeSession object.
+        
+        Expected JSON format from Watch:
+        {
+            "session_id": "...",
+            "start_time": "...",
+            "end_time": "...",
+            "steps": 123,
+            "distance_m": 456,
+            "duration_s": 30
+        }
         """
-        m = message.decode('utf-8')
-
-        # filtering because we might have a semi-column at the end of the message, right before the new-line character
-        parts = list(filter(lambda p: len(p) > 0, m.split(';')))
-        assert len(parts) >= 3, f"MessageProcessingError -> The incoming message doesn't contain enough information: {m}"
+        # Decode the bytes to string and parse JSON
+        data = json.loads(message.decode('utf-8'))
 
         hs = hike.HikeSession()
-        hs.id     = int(parts[0])
-        hs.steps  = int(parts[1])
-        hs.km     = float(parts[2])
 
-        def cvt_coord(c):
-            sc = c.split(',')
-            assert len(sc) == 2, f"MessageProcessingError -> Unable to process coordinate: {c}"
-            return float(sc[0]), float(sc[1])
-
-        if len(parts) > 3:
-            hs.coords = map(cvt_coord, parts[3:])
+        hs.session_id = data.get("session_id", "")
+        hs.start_time = data.get("start_time", "")
+        hs.end_time = data.get("end_time", "")
+        hs.steps = int(data.get("steps", 0))
+        hs.distance_m = int(data.get("distance_m", 0))
+        hs.duration_s = int(data.get("duration_s", 0))
 
         return hs
