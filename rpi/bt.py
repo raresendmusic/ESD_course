@@ -7,6 +7,7 @@ import hike
 WATCH_BT_MAC = '94:B5:55:C8:DF:AE'
 WATCH_BT_PORT = 1
 BT_PROTOCOL_VERSION = 2
+SUCCESSFUL_SYNC_COOLDOWN_SECONDS = 15
 
 
 class HubBluetooth:
@@ -26,8 +27,10 @@ class HubBluetooth:
     the caller so the receiver can wait for a new connection.
     """
 
-    connected = False
-    sock = None
+    def __init__(self):
+        self.connected = False
+        self.sock = None
+        self.last_successful_sync_at = 0.0
 
     def close_connection(self):
         """Close the current Bluetooth socket and reset connection state.
@@ -82,31 +85,44 @@ class HubBluetooth:
         connection attempt. Once connected, the method performs the protocol
         handshake before returning.
         """
-        if not self.connected:
-            while True:
-                print("Waiting for connection...")
-                try:
-                    self.close_connection()
-                    self.sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-                    self.sock.connect((WATCH_BT_MAC, WATCH_BT_PORT))
-                    self.sock.settimeout(2)
-                    self.connected = True
-                    self.perform_handshake()
-                    print("Connected to Watch!")
-                    break
-                except bluetooth.btcommon.BluetoothError as e:
-                    self.close_connection()
-                    print(f"Bluetooth connect failed: {e}")
-                    time.sleep(1)
-                except Exception as e:
-                    self.close_connection()
-                    print(e)
-                    print("Hub: Error occured while trying to connect to the Watch.")
-
-            print("Hub: Established Bluetooth connection with Watch!")
+        if self.connected:
+            print("WARNING Hub: Bluetooth is already connected.")
             return
 
-        print("WARNING Hub: Bluetooth is already connected.")
+        while True:
+            cooldown_remaining = (
+                self.last_successful_sync_at
+                + SUCCESSFUL_SYNC_COOLDOWN_SECONDS
+                - time.time()
+            )
+            if cooldown_remaining > 0:
+                print(
+                    f"Recent sync completed; delaying reconnect for "
+                    f"{cooldown_remaining:.1f}s."
+                )
+                time.sleep(min(1.0, cooldown_remaining))
+                continue
+
+            print("Waiting for connection...")
+            try:
+                self.close_connection()
+                self.sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+                self.sock.connect((WATCH_BT_MAC, WATCH_BT_PORT))
+                self.sock.settimeout(2)
+                self.connected = True
+                self.perform_handshake()
+                print("Connected to Watch!")
+                break
+            except bluetooth.btcommon.BluetoothError as e:
+                self.close_connection()
+                print(f"Bluetooth connect failed: {e}")
+                time.sleep(1)
+            except Exception as e:
+                self.close_connection()
+                print(e)
+                print("Hub: Error occured while trying to connect to the Watch.")
+
+        print("Hub: Established Bluetooth connection with Watch!")
 
     def synchronize(self, callback):
         """Receive and process protocol messages from the watch.
@@ -164,6 +180,7 @@ class HubBluetooth:
 
                     if line == "SYNC_DONE":
                         print("Watch reported sync completion.")
+                        self.last_successful_sync_at = time.time()
                         self.close_connection()
                         return True
 
