@@ -1,17 +1,32 @@
-import time
-import sqlite3
-
 import hike
 import db
 import bt
 
+from datetime import datetime, timedelta
+
 hubdb = db.HubDatabase()
 hubbt = bt.HubBluetooth()
+
+
+def apply_receiver_timestamps(
+        session: hike.HikeSession,
+        received_at: datetime | None = None
+    ) -> hike.HikeSession:
+    if received_at is None:
+        received_at = datetime.now()
+
+    duration_s = max(int(session.duration_s), 0)
+    start_at = received_at - timedelta(seconds=duration_s)
+    received_iso = received_at.isoformat(timespec="seconds")
+
+    session.end_time = received_iso
+    session.start_time = start_at.isoformat(timespec="seconds")
+    session.created_at = received_iso
+    return session
 
 def process_sessions(sessions: list[hike.HikeSession]):
     """Callback function to process sessions.
 
-    Calculates the calories for a hiking session.
     Saves the session into the database.
 
     Args:
@@ -19,7 +34,7 @@ def process_sessions(sessions: list[hike.HikeSession]):
     """
 
     for s in sessions:
-        s.calc_kcal()
+        apply_receiver_timestamps(s)
         hubdb.save(s)
 
 def main():
