@@ -126,18 +126,16 @@ class HubBluetooth:
             True if synchronization ends normally with SYNC_DONE, otherwise
             False if the connection is lost and the caller should wait for the
             watch to reconnect.
-
-        Raises:
-            KeyboardInterrupt: If the process is interrupted manually.
-            RuntimeError: If the watch explicitly rejects time sync.
-            Exception: Re-raises unexpected non-Bluetooth errors.
         """
         print("Synchronizing with watch...")
         remainder = b''
+        timeout_count = 0
+        max_timeouts = 3
 
         while True:
             try:
                 chunk = self.sock.recv(1024)
+                timeout_count = 0
 
                 if not chunk:
                     print("Watch closed the Bluetooth connection.")
@@ -190,6 +188,14 @@ class HubBluetooth:
                     return False
 
                 if errno is None:
+                    timeout_count += 1
+                    print(f"Bluetooth receive timeout ({timeout_count}/{max_timeouts}).")
+
+                    if timeout_count >= max_timeouts:
+                        print("Too many consecutive timeouts; ending sync attempt.")
+                        self.close_connection()
+                        return False
+
                     try:
                         self.send_line("SYNC_PULL")
                         print("Reminder sent to the watch to continue synchronization.")

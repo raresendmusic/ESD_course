@@ -1,3 +1,5 @@
+import time
+
 import hike
 import db
 import bt
@@ -32,7 +34,9 @@ def main():
     try:
         while True:
             hubbt.wait_for_connection()
-            hubbt.synchronize(callback=process_sessions)
+            completed = hubbt.synchronize(callback=process_sessions)
+            if completed:
+                time.sleep(2)
 
     except KeyboardInterrupt:
         print("CTRL+C Pressed. Shutting down the server...")
