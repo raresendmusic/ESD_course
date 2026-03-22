@@ -1,1 +1,0 @@
-// bluetooth / transmision implementation
